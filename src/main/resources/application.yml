@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: catalog-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/catalog_db
+    username: postgres
+    # password:  # Прибрано, оскільки використовується trust
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # Для продакшену змініть на 'update'
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect  # Додано явний діалект
+  data:
+    redis:
+      host: localhost
+      port: 6379
+    elasticsearch:
+      uris: http://localhost:9200
+  kafka:
+    bootstrap-servers: localhost:9092
+    template:
+      default-topic: topic.content.index
+    consumer:
+      group-id: catalog-group
+      auto-offset-reset: earliest
+  cache:
+    type: redis
+server:
+  port: 8081
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+logging:
+  level:
+    root: INFO
+    org.springframework: INFO
+    com.example.catalog: DEBUG
