@@ -1,34 +1,29 @@
 package com.example.catalog.service;
 
-import com.example.catalog.dto.ProductCreateDto;
 import com.example.catalog.dto.ProductDto;
-import com.example.catalog.dto.ProductUpdateDto;
+import com.example.catalog.entity.Category;
 import com.example.catalog.entity.Product;
-import com.example.catalog.document.ProductDocument;
-import com.example.catalog.event.ContentIndexEvent;
-import com.example.catalog.mapper.ProductMapper;
+import com.example.catalog.entity.ProductType;
+import com.example.catalog.entity.Tag;
+import com.example.catalog.repository.CategoryRepository;
 import com.example.catalog.repository.ProductRepository;
-import com.example.catalog.repository.elasticsearch.ProductElasticsearchRepository;
+import com.example.catalog.repository.TagRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
-import java.util.Collections;
-import java.util.Optional;
-import java.util.UUID;
+import java.time.Instant;
+import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,218 +33,326 @@ class ProductServiceTest {
     private ProductRepository productRepository;
 
     @Mock
-    private com.example.catalog.repository.CategoryRepository categoryRepository;
+    private CategoryRepository categoryRepository;
 
     @Mock
-    private com.example.catalog.repository.TagRepository tagRepository;
-
-    @Mock
-    private ProductElasticsearchRepository elasticsearchRepository;
-
-    @Mock
-    private ProductMapper mapper;
-
-    @Mock
-    private KafkaTemplate<String, ContentIndexEvent> kafkaTemplate;
+    private TagRepository tagRepository;
 
     @InjectMocks
     private ProductService service;
 
+    private Product sampleProduct;
+    private ProductDto sampleDto;
+
+    @BeforeEach
+    void setUp() {
+        // Create sample product
+        sampleProduct = new Product();
+        sampleProduct.setId(UUID.randomUUID());
+        sampleProduct.setTitle("Test Book");
+        sampleProduct.setDescription("Test Description");
+        sampleProduct.setAuthors("Test Author");
+        sampleProduct.setPriceCents(1000);
+        sampleProduct.setCurrency("USD");
+        sampleProduct.setType(ProductType.EBOOK);
+        sampleProduct.setMetadata("{}");
+        sampleProduct.setCreatedAt(Instant.now());
+
+        // Create categories and tags
+        Category category = new Category();
+        category.setId(UUID.randomUUID());
+        category.setName("Fiction");
+        sampleProduct.setCategories(Set.of(category));
+
+        Tag tag = new Tag();
+        tag.setId(UUID.randomUUID());
+        tag.setName("Bestseller");
+        sampleProduct.setTags(Set.of(tag));
+
+        // Create sample DTO
+        sampleDto = new ProductDto();
+        sampleDto.setTitle("Test Book");
+        sampleDto.setDescription("Test Description");
+        sampleDto.setAuthors("Test Author");
+        sampleDto.setPriceCents(1000);
+        sampleDto.setCurrency("USD");
+        sampleDto.setType(ProductType.EBOOK);
+        sampleDto.setMetadata("{}");
+    }
+
+    // ==================== CREATE TESTS ====================
+
     @Test
-    void getById() {
-        UUID id = UUID.randomUUID();
-        Product product = new Product();
-        product.setId(id);
-        ProductDto dto = new ProductDto();
-        dto.setId(id);
+    void create_withValidDto_returnsCreatedProduct() {
+        // Given
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
 
-        when(productRepository.findById(id)).thenReturn(Optional.of(product));
-        when(mapper.toDto(product)).thenReturn(dto);
+        // When
+        ProductDto result = service.create(sampleDto);
 
+        // Then
+        assertNotNull(result);
+        assertEquals(sampleProduct.getTitle(), result.getTitle());
+        verify(productRepository).save(any(Product.class));
+    }
+
+    @Test
+    void create_withCategories_savesCategories() {
+        // Given
+        UUID categoryId = UUID.randomUUID();
+        Category category = new Category();
+        category.setId(categoryId);
+        category.setName("Fiction");
+
+        sampleDto.setCategoryIds(Set.of(categoryId));
+        sampleProduct.setCategories(Set.of(category));
+
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+
+        // When
+        ProductDto result = service.create(sampleDto);
+
+        // Then
+        assertNotNull(result);
+        verify(categoryRepository).findById(categoryId);
+    }
+
+    @Test
+    void create_withTags_savesTags() {
+        // Given
+        UUID tagId = UUID.randomUUID();
+        Tag tag = new Tag();
+        tag.setId(tagId);
+        tag.setName("New");
+
+        sampleDto.setTagIds(Set.of(tagId));
+        sampleProduct.setTags(Set.of(tag));
+
+        when(tagRepository.findById(tagId)).thenReturn(Optional.of(tag));
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+
+        // When
+        ProductDto result = service.create(sampleDto);
+
+        // Then
+        assertNotNull(result);
+        verify(tagRepository).findById(tagId);
+    }
+
+    // ==================== READ TESTS ====================
+
+    @Test
+    void getById_existingId_returnsProduct() {
+        // Given
+        UUID id = sampleProduct.getId();
+        when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
+
+        // When
         ProductDto result = service.getById(id);
+
+        // Then
+        assertNotNull(result);
         assertEquals(id, result.getId());
+        assertEquals("Test Book", result.getTitle());
     }
 
     @Test
-    void getById_notFound_throws() {
+    void getById_nonExistingId_throwsException() {
+        // Given
         UUID id = UUID.randomUUID();
         when(productRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(RuntimeException.class, () -> service.getById(id));
+        // When & Then
+        assertThrows(NoSuchElementException.class, () -> service.getById(id));
     }
 
     @Test
-    void create() {
-        ProductCreateDto createDto = new ProductCreateDto();
-        Product product = new Product();
-        product.setId(UUID.randomUUID());
-        ProductDto dto = new ProductDto();
-        dto.setId(product.getId());
+    void findAll_returnsPageOfProducts() {
+        // Given
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
+        when(productRepository.findAll(pageable)).thenReturn(page);
 
-        ProductDocument document = new ProductDocument();
+        // When
+        Page<ProductDto> result = service.findAll(pageable);
 
-        when(mapper.toEntity(createDto)).thenReturn(product);
-        when(productRepository.save(any(Product.class))).thenReturn(product);
-        when(mapper.toDto(product)).thenReturn(dto);
-        when(mapper.toDocument(product)).thenReturn(document);
-
-        service.create(createDto);
-
-        verify(elasticsearchRepository).save(any());
-        ArgumentCaptor<ContentIndexEvent> eventCaptor = ArgumentCaptor.forClass(ContentIndexEvent.class);
-        verify(kafkaTemplate).send(eq("topic.content.index"), eventCaptor.capture());
-        assertEquals("create", eventCaptor.getValue().getAction());
+        // Then
+        assertEquals(1, result.getTotalElements());
+        assertEquals("Test Book", result.getContent().get(0).getTitle());
     }
 
-    @Test
-    void update() {
-        UUID id = UUID.randomUUID();
-        ProductUpdateDto updateDto = new ProductUpdateDto();
-        updateDto.setTitle("Updated");
-
-        Product existing = new Product();
-        existing.setId(id);
-        Product saved = new Product();
-        saved.setId(id);
-
-        ProductDto mapped = new ProductDto();
-        mapped.setId(id);
-        mapped.setTitle("Updated");
-
-        ProductDocument document = new ProductDocument();
-        document.setId(id.toString());
-
-        when(productRepository.findById(id)).thenReturn(Optional.of(existing));
-        when(productRepository.save(any(Product.class))).thenReturn(saved);
-        when(mapper.toDto(saved)).thenReturn(mapped);
-        when(mapper.toDocument(saved)).thenReturn(document);
-
-        service.update(id, updateDto);
-
-        verify(elasticsearchRepository).save(any());
-        ArgumentCaptor<ContentIndexEvent> eventCaptor = ArgumentCaptor.forClass(ContentIndexEvent.class);
-        verify(kafkaTemplate).send(eq("topic.content.index"), eventCaptor.capture());
-        assertEquals("update", eventCaptor.getValue().getAction());
-    }
+    // ==================== UPDATE TESTS ====================
 
     @Test
-    void update_notFound_throws() {
-        UUID id = UUID.randomUUID();
-        ProductUpdateDto updateDto = new ProductUpdateDto();
+    void update_existingId_updatesProduct() {
+        // Given
+        UUID id = sampleProduct.getId();
+        ProductDto updateDto = new ProductDto();
+        updateDto.setTitle("Updated Title");
+        updateDto.setPriceCents(2000);
+        updateDto.setType(ProductType.AUDIOBOOK);
 
-        when(productRepository.findById(id)).thenReturn(Optional.empty());
+        when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
 
-        assertThrows(RuntimeException.class, () -> service.update(id, updateDto));
-    }
-
-    @Test
-    void delete() {
-        UUID id = UUID.randomUUID();
-        Product existing = new Product();
-        existing.setId(id);
-
-        when(productRepository.findById(id)).thenReturn(Optional.of(existing));
-
-        service.delete(id);
-
-        verify(productRepository).delete(existing);
-        verify(elasticsearchRepository).deleteById(eq(id.toString()));
-        ArgumentCaptor<ContentIndexEvent> eventCaptor = ArgumentCaptor.forClass(ContentIndexEvent.class);
-        verify(kafkaTemplate).send(eq("topic.content.index"), eventCaptor.capture());
-        assertEquals("delete", eventCaptor.getValue().getAction());
-    }
-
-    @Test
-    void delete_notFound_throws() {
-        UUID id = UUID.randomUUID();
-        when(productRepository.findById(id)).thenReturn(Optional.empty());
-
-        assertThrows(RuntimeException.class, () -> service.delete(id));
-    }
-
-    @Test
-    void create_withoutKafkaAndElasticsearch_doesNotFail() {
-        ReflectionTestUtils.setField(service, "kafkaTemplate", null);
-        ReflectionTestUtils.setField(service, "elasticsearchRepository", null);
-
-        ProductCreateDto createDto = new ProductCreateDto();
-        Product product = new Product();
-        product.setId(UUID.randomUUID());
-        ProductDto dto = new ProductDto();
-        dto.setId(product.getId());
-
-        when(mapper.toEntity(createDto)).thenReturn(product);
-        when(productRepository.save(any(Product.class))).thenReturn(product);
-        when(mapper.toDto(product)).thenReturn(dto);
-        when(mapper.toDocument(product)).thenReturn(new ProductDocument());
-
-        ProductDto result = service.create(createDto);
-
-        assertEquals(product.getId(), result.getId());
-        verifyNoInteractions(kafkaTemplate);
-        verifyNoInteractions(elasticsearchRepository);
-    }
-
-    @Test
-    void update_withoutKafkaAndElasticsearch_doesNotFail() {
-        ReflectionTestUtils.setField(service, "kafkaTemplate", null);
-        ReflectionTestUtils.setField(service, "elasticsearchRepository", null);
-
-        UUID id = UUID.randomUUID();
-        ProductUpdateDto updateDto = new ProductUpdateDto();
-        updateDto.setTitle("Updated");
-
-        Product existing = new Product();
-        existing.setId(id);
-        Product saved = new Product();
-        saved.setId(id);
-
-        ProductDto mapped = new ProductDto();
-        mapped.setId(id);
-        mapped.setTitle("Updated");
-
-        when(productRepository.findById(id)).thenReturn(Optional.of(existing));
-        when(productRepository.save(any(Product.class))).thenReturn(saved);
-        when(mapper.toDto(saved)).thenReturn(mapped);
-        when(mapper.toDocument(saved)).thenReturn(new ProductDocument());
-
+        // When
         ProductDto result = service.update(id, updateDto);
 
-        assertEquals(id, result.getId());
-        verifyNoInteractions(kafkaTemplate);
-        verifyNoInteractions(elasticsearchRepository);
+        // Then
+        assertNotNull(result);
+        verify(productRepository).save(any(Product.class));
     }
 
     @Test
-    void delete_withoutKafkaAndElasticsearch_doesNotFail() {
-        ReflectionTestUtils.setField(service, "kafkaTemplate", null);
-        ReflectionTestUtils.setField(service, "elasticsearchRepository", null);
-
+    void update_nonExistingId_throwsException() {
+        // Given
         UUID id = UUID.randomUUID();
-        Product existing = new Product();
-        existing.setId(id);
+        ProductDto updateDto = new ProductDto();
+        when(productRepository.findById(id)).thenReturn(Optional.empty());
 
-        when(productRepository.findById(id)).thenReturn(Optional.of(existing));
+        // When & Then
+        assertThrows(NoSuchElementException.class, () -> service.update(id, updateDto));
+    }
 
+    // ==================== DELETE TESTS ====================
+
+    @Test
+    void delete_existingId_deletesProduct() {
+        // Given
+        UUID id = sampleProduct.getId();
+        when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
+
+        // When
         service.delete(id);
 
-        verify(productRepository).delete(existing);
-        verifyNoInteractions(kafkaTemplate);
-        verifyNoInteractions(elasticsearchRepository);
+        // Then
+        verify(productRepository).delete(sampleProduct);
     }
 
     @Test
-    void search_withoutElasticsearch_fallsBackToFindAll() {
-        ReflectionTestUtils.setField(service, "elasticsearchRepository", null);
+    void delete_nonExistingId_throwsException() {
+        // Given
+        UUID id = UUID.randomUUID();
+        when(productRepository.findById(id)).thenReturn(Optional.empty());
 
-        Pageable pageable = Pageable.ofSize(10);
-        Page<Product> products = new PageImpl<>(Collections.emptyList(), pageable, 0);
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(products);
+        // When & Then
+        assertThrows(NoSuchElementException.class, () -> service.delete(id));
+    }
 
-        Page<ProductDto> result = service.search("q", pageable);
+    // ==================== SEARCH TESTS ====================
 
-        assertEquals(0, result.getTotalElements());
-        verify(productRepository).findAll(any(Pageable.class));
-        verifyNoInteractions(kafkaTemplate);
+    @Test
+    void search_withQuery_returnsMatchingProducts() {
+        // Given
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
+        when(productRepository.searchByText("Test", pageable)).thenReturn(page);
+
+        // When
+        Page<ProductDto> result = service.search("Test", pageable);
+
+        // Then
+        assertEquals(1, result.getTotalElements());
+        verify(productRepository).searchByText("Test", pageable);
+    }
+
+    // ==================== FILTER TESTS ====================
+
+    @Test
+    void findByType_returnsFilteredProducts() {
+        // Given
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
+        when(productRepository.findByType(ProductType.EBOOK, pageable)).thenReturn(page);
+
+        // When
+        Page<ProductDto> result = service.findByType(ProductType.EBOOK, pageable);
+
+        // Then
+        assertEquals(1, result.getTotalElements());
+        assertEquals(ProductType.EBOOK, result.getContent().get(0).getType());
+    }
+
+    @Test
+    void findByPriceRange_returnsFilteredProducts() {
+        // Given
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
+        when(productRepository.findByPriceCentsBetween(500, 2000, pageable)).thenReturn(page);
+
+        // When
+        Page<ProductDto> result = service.findByPriceRange(500, 2000, pageable);
+
+        // Then
+        assertEquals(1, result.getTotalElements());
+    }
+
+    @Test
+    void findByCategory_returnsFilteredProducts() {
+        // Given
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
+        when(productRepository.findByCategoryName("Fiction", pageable)).thenReturn(page);
+
+        // When
+        Page<ProductDto> result = service.findByCategory("Fiction", pageable);
+
+        // Then
+        assertEquals(1, result.getTotalElements());
+    }
+
+    // ==================== EDGE CASES ====================
+
+    @Test
+    void create_withNullCategories_doesNotFail() {
+        // Given
+        sampleDto.setCategoryIds(null);
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+
+        // When
+        ProductDto result = service.create(sampleDto);
+
+        // Then
+        assertNotNull(result);
+        verify(categoryRepository, never()).findById(any());
+    }
+
+    @Test
+    void create_withNullTags_doesNotFail() {
+        // Given
+        sampleDto.setTagIds(null);
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+
+        // When
+        ProductDto result = service.create(sampleDto);
+
+        // Then
+        assertNotNull(result);
+        verify(tagRepository, never()).findById(any());
+    }
+
+    @Test
+    void update_withCategories_updatesCategories() {
+        // Given
+        UUID id = sampleProduct.getId();
+        UUID categoryId = UUID.randomUUID();
+        Category category = new Category();
+        category.setId(categoryId);
+        category.setName("Updated");
+
+        ProductDto updateDto = new ProductDto();
+        updateDto.setCategoryIds(Set.of(categoryId));
+
+        when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
+        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+
+        // When
+        ProductDto result = service.update(id, updateDto);
+
+        // Then
+        assertNotNull(result);
+        verify(categoryRepository).findById(categoryId);
     }
 }

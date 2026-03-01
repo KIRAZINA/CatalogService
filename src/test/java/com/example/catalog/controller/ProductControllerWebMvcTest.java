@@ -1,22 +1,19 @@
 package com.example.catalog.controller;
 
 import com.example.catalog.CatalogServiceApplication;
-import com.example.catalog.dto.ProductCreateDto;
 import com.example.catalog.dto.ProductDto;
-import com.example.catalog.dto.ProductUpdateDto;
 import com.example.catalog.entity.ProductType;
 import com.example.catalog.service.ProductService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -34,7 +31,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(classes = CatalogServiceApplication.class)
 @AutoConfigureMockMvc(addFilters = false)
-@ActiveProfiles("local")
 class ProductControllerWebMvcTest {
 
     @Autowired
@@ -159,44 +155,44 @@ class ProductControllerWebMvcTest {
 
     @Test
     void create_callsService() throws Exception {
-        ProductCreateDto createDto = new ProductCreateDto();
-        createDto.setTitle("t");
-        createDto.setType(ProductType.EBOOK);
-        createDto.setCurrency("USD");
-        createDto.setPriceCents(100);
+        ProductDto dto = new ProductDto();
+        dto.setTitle("Test");
+        dto.setType(ProductType.EBOOK);
+        dto.setCurrency("USD");
+        dto.setPriceCents(100);
 
         ProductDto result = new ProductDto();
         result.setId(UUID.randomUUID());
-        when(service.create(any(ProductCreateDto.class))).thenReturn(result);
+        when(service.create(any(ProductDto.class))).thenReturn(result);
 
         mockMvc.perform(post("/catalog")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createDto)))
+                        .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk());
 
-        verify(service).create(any(ProductCreateDto.class));
+        verify(service).create(any(ProductDto.class));
     }
 
     @Test
     void update_callsService() throws Exception {
         UUID id = UUID.randomUUID();
 
-        ProductUpdateDto updateDto = new ProductUpdateDto();
-        updateDto.setTitle("t2");
-        updateDto.setType(ProductType.EBOOK);
-        updateDto.setCurrency("USD");
-        updateDto.setPriceCents(200);
+        ProductDto dto = new ProductDto();
+        dto.setTitle("Updated");
+        dto.setType(ProductType.EBOOK);
+        dto.setCurrency("USD");
+        dto.setPriceCents(200);
 
         ProductDto result = new ProductDto();
         result.setId(id);
-        when(service.update(eq(id), any(ProductUpdateDto.class))).thenReturn(result);
+        when(service.update(eq(id), any(ProductDto.class))).thenReturn(result);
 
         mockMvc.perform(put("/catalog/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(updateDto)))
+                        .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk());
 
-        verify(service).update(eq(id), any(ProductUpdateDto.class));
+        verify(service).update(eq(id), any(ProductDto.class));
     }
 
     @Test
