@@ -1,64 +1,66 @@
 # Catalog Service
 
-This is the catalog-service module for the Smart Content Marketplace project. It handles the catalog of digital content with full-text search via Elasticsearch, caching via Redis, and event publishing to Kafka for indexing synchronization.
+This is the catalog-service module for the Smart Content Marketplace project. It provides CRUD operations and basic filtering for digital content in the catalog.
 
 ## Prerequisites
 
-Install the following locally (without Docker):
+Install one of the following:
 
-1. **PostgreSQL**:
-    - Download and install from https://www.postgresql.org/.
-    - Create a database: `createdb -U postgres catalog_db` (default user: postgres, password: password).
-    - Update `application.yml` if credentials differ.
-
-2. **Redis**:
-    - Download from https://redis.io/download.
-    - Run: `redis-server` (default port 6379).
-
-3. **Kafka + Zookeeper**:
-    - Download Kafka from https://kafka.apache.org/downloads.
-    - Start Zookeeper: `bin/zookeeper-server-start.sh config/zookeeper.properties`.
-    - Start Kafka: `bin/kafka-server-start.sh config/server.properties`.
-    - Create topics if needed: `bin/kafka-topics.sh --create --topic topic.content.index --bootstrap-server localhost:9092`.
-
-4. **Elasticsearch**:
-    - Download from https://www.elastic.co/downloads/elasticsearch.
-    - Run: `bin/elasticsearch` (default port 9200, single-node mode).
+1. **Local PostgreSQL** for direct host run.
+2. **Docker Desktop / Docker Engine** for containerized run.
 
 ## Setup and Run
 
 1. Clone the repository.
-2. Configure `application.yml` with your local settings if needed.
-3. Build: `./gradlew build`.
-4. Run: `./gradlew bootRun`.
-5. Access API at http://localhost:8081/catalog.
+2. Build locally: `./gradlew build`.
+3. Run with PostgreSQL on host: `./gradlew bootRun`.
+4. Run with in-memory H2 profile: `./gradlew bootRun --args='--spring.profiles.active=local'`.
+5. Run with Docker: `docker compose up --build`.
+6. Access API at `http://localhost:8081/catalog`.
+
+## Authentication
+
+- The API uses HTTP Basic authentication.
+- Read operations (`GET /catalog/**`) are available to `USER` and `ADMIN`.
+- Write operations (`POST`, `PUT`, `DELETE`) are available only to `ADMIN`.
+- Default credentials:
+  - `catalog_user / userpass`
+  - `catalog_admin / adminpass`
+
+## Docker
+
+- `docker-compose.yml` starts `postgres` and `catalog-service` together.
+- Docker run uses Spring profile `container`, so the service works against PostgreSQL instead of the local H2 profile.
+- The application container reads DB and security settings from environment variables.
+- Default Docker database credentials:
+  - `postgres / postgres`
+- Stop containers with `docker compose down`.
+- Stop containers and remove database volume with `docker compose down -v`.
 
 ## Configuration
 
-- Database: PostgreSQL at localhost:5432/catalog_db.
-- Elasticsearch: http://localhost:9200.
-- Redis: localhost:6379.
-- Kafka: localhost:9092.
-- For security, configure JWT secret in `application.yml`.
+- Database config is driven by `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`.
+- Server port is driven by `SERVER_PORT`.
+- Hibernate DDL mode is driven by `DDL_AUTO`.
+- Security users are configured by `APP_SECURITY_*` variables.
 
 ## Tests
 
-- Unit tests: `./gradlew test`.
-- Integration tests use Testcontainers (starts isolated instances of Postgres and Elasticsearch).
+- Unit and integration tests: `./gradlew test`.
+- Tests use the in-memory H2 database from `src/test/resources/application-test.yml`.
 
 ## Manual Testing Checklist
 
-- [ ] Start all local services (Postgres, Redis, Kafka, Elasticsearch).
-- [ ] Run the application.
-- [ ] Authenticate as ADMIN (use JWT from auth-service or mock).
-- [ ] POST /catalog: Create a new product (check DB and ES index).
-- [ ] GET /catalog/{id}: Retrieve product (check cache hit on second call).
-- [ ] PUT /catalog/{id}: Update product (check cache invalidation and event published).
-- [ ] DELETE /catalog/{id}: Delete product (check removal from DB and ES).
-- [ ] GET /catalog?query=keyword: Search products (verify full-text results).
+- [ ] Start the app locally or via Docker.
+- [ ] Call `GET /catalog` with `catalog_user` and confirm success.
+- [ ] Call `POST /catalog` with `catalog_user` and confirm HTTP 403.
+- [ ] Call `POST /catalog` with `catalog_admin` and confirm success.
+- [ ] GET /catalog/{id}: Retrieve product.
+- [ ] PUT /catalog/{id}: Update product as admin.
+- [ ] DELETE /catalog/{id}: Delete product as admin.
+- [ ] GET /catalog?query=keyword: Search products.
 - [ ] GET /catalog?type=EBOOK: Filter by type.
 - [ ] GET /catalog?minPrice=0&maxPrice=1000: Filter by price range.
 - [ ] GET /catalog?category=genre: Filter by category.
-- [ ] Check Kafka topic for events (use consumer tool).
-- [ ] As USER, attempt ADMIN endpoints (should fail).
-- [ ] Monitor logs for errors.
+- [ ] Send invalid payloads and confirm the API returns HTTP 400.
+- [ ] Monitor container logs for errors.

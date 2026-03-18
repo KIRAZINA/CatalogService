@@ -2,6 +2,7 @@ package com.example.catalog.controller;
 
 import com.example.catalog.dto.ProductDto;
 import com.example.catalog.service.ProductService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -43,7 +44,7 @@ public class ProductController {
     }
 
     @PostMapping
-    public ProductDto create(@RequestBody ProductDto dto) {
+    public ProductDto create(@Valid @RequestBody ProductDto dto) {
         return service.create(dto);
     }
 

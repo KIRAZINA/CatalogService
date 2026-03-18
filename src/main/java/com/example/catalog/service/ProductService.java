@@ -14,10 +14,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
-import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,26 +39,17 @@ public class ProductService {
 
     @Transactional
     public ProductDto create(ProductDto dto) {
+        validateCreateRequest(dto);
         Product product = toEntity(dto);
-        
+
         if (dto.getCategoryIds() != null && !dto.getCategoryIds().isEmpty()) {
-            Set<Category> categories = dto.getCategoryIds().stream()
-                    .map(categoryRepository::findById)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .collect(Collectors.toSet());
-            product.setCategories(categories);
+            product.setCategories(resolveCategories(dto.getCategoryIds()));
         }
-        
+
         if (dto.getTagIds() != null && !dto.getTagIds().isEmpty()) {
-            Set<Tag> tags = dto.getTagIds().stream()
-                    .map(tagRepository::findById)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .collect(Collectors.toSet());
-            product.setTags(tags);
+            product.setTags(resolveTags(dto.getTagIds()));
         }
-        
+
         product = productRepository.save(product);
         return toDto(product);
     }
@@ -67,33 +57,40 @@ public class ProductService {
     @Transactional
     public ProductDto update(UUID id, ProductDto dto) {
         Product product = productRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Product not found"));
-        
-        product.setTitle(dto.getTitle());
-        product.setAuthors(dto.getAuthors());
-        product.setDescription(dto.getDescription());
-        product.setPriceCents(dto.getPriceCents());
-        product.setCurrency(dto.getCurrency());
-        product.setType(dto.getType());
-        product.setMetadata(dto.getMetadata());
-        
+
+        if (dto.getTitle() != null) {
+            validateText(dto.getTitle(), "Title must not be blank");
+            product.setTitle(dto.getTitle());
+        }
+        if (dto.getAuthors() != null) {
+            product.setAuthors(dto.getAuthors());
+        }
+        if (dto.getDescription() != null) {
+            product.setDescription(dto.getDescription());
+        }
+        if (dto.getPriceCents() != null) {
+            validatePrice(dto.getPriceCents());
+            product.setPriceCents(dto.getPriceCents());
+        }
+        if (dto.getCurrency() != null) {
+            validateText(dto.getCurrency(), "Currency must not be blank");
+            product.setCurrency(dto.getCurrency());
+        }
+        if (dto.getType() != null) {
+            product.setType(dto.getType());
+        }
+        if (dto.getMetadata() != null) {
+            product.setMetadata(dto.getMetadata());
+        }
+
         if (dto.getCategoryIds() != null) {
-            Set<Category> categories = dto.getCategoryIds().stream()
-                    .map(categoryRepository::findById)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .collect(Collectors.toSet());
-            product.setCategories(categories);
+            product.setCategories(resolveCategories(dto.getCategoryIds()));
         }
-        
+
         if (dto.getTagIds() != null) {
-            Set<Tag> tags = dto.getTagIds().stream()
-                    .map(tagRepository::findById)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
-                    .collect(Collectors.toSet());
-            product.setTags(tags);
+            product.setTags(resolveTags(dto.getTagIds()));
         }
-        
+
         product = productRepository.save(product);
         return toDto(product);
     }
@@ -121,6 +118,9 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<ProductDto> findByPriceRange(long min, long max, Pageable pageable) {
+        if (min > max) {
+            throw new IllegalArgumentException("Minimum price must be less than or equal to maximum price");
+        }
         return productRepository.findByPriceCentsBetween(min, max, pageable).map(this::toDto);
     }
 
@@ -129,7 +129,6 @@ public class ProductService {
         return productRepository.findByCategoryName(categoryName, pageable).map(this::toDto);
     }
 
-    // Manual mapping methods (replacing MapStruct)
     private ProductDto toDto(Product product) {
         ProductDto dto = new ProductDto();
         dto.setId(product.getId());
@@ -141,19 +140,19 @@ public class ProductService {
         dto.setType(product.getType());
         dto.setMetadata(product.getMetadata());
         dto.setCreatedAt(product.getCreatedAt());
-        
+
         if (product.getCategories() != null) {
             dto.setCategoryNames(product.getCategories().stream()
                     .map(Category::getName)
                     .collect(Collectors.toSet()));
         }
-        
+
         if (product.getTags() != null) {
             dto.setTagNames(product.getTags().stream()
                     .map(Tag::getName)
                     .collect(Collectors.toSet()));
         }
-        
+
         return dto;
     }
 
@@ -167,5 +166,43 @@ public class ProductService {
         product.setType(dto.getType());
         product.setMetadata(dto.getMetadata());
         return product;
+    }
+
+    private void validateCreateRequest(ProductDto dto) {
+        validateText(dto.getTitle(), "Title is required");
+        validateText(dto.getCurrency(), "Currency is required");
+        if (dto.getType() == null) {
+            throw new IllegalArgumentException("Type is required");
+        }
+        if (dto.getPriceCents() == null) {
+            throw new IllegalArgumentException("Price is required");
+        }
+        validatePrice(dto.getPriceCents());
+    }
+
+    private void validateText(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private void validatePrice(Long priceCents) {
+        if (priceCents < 0) {
+            throw new IllegalArgumentException("Price must be greater than or equal to 0");
+        }
+    }
+
+    private Set<Category> resolveCategories(Set<UUID> categoryIds) {
+        return categoryIds.stream()
+                .map(id -> categoryRepository.findById(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Category not found: " + id)))
+                .collect(Collectors.toSet());
+    }
+
+    private Set<Tag> resolveTags(Set<UUID> tagIds) {
+        return tagIds.stream()
+                .map(id -> tagRepository.findById(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Tag not found: " + id)))
+                .collect(Collectors.toSet());
     }
 }

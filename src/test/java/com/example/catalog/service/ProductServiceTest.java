@@ -20,11 +20,19 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
-import java.util.*;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
@@ -46,7 +54,6 @@ class ProductServiceTest {
 
     @BeforeEach
     void setUp() {
-        // Create sample product
         sampleProduct = new Product();
         sampleProduct.setId(UUID.randomUUID());
         sampleProduct.setTitle("Test Book");
@@ -58,7 +65,6 @@ class ProductServiceTest {
         sampleProduct.setMetadata("{}");
         sampleProduct.setCreatedAt(Instant.now());
 
-        // Create categories and tags
         Category category = new Category();
         category.setId(UUID.randomUUID());
         category.setName("Fiction");
@@ -69,36 +75,37 @@ class ProductServiceTest {
         tag.setName("Bestseller");
         sampleProduct.setTags(Set.of(tag));
 
-        // Create sample DTO
         sampleDto = new ProductDto();
         sampleDto.setTitle("Test Book");
         sampleDto.setDescription("Test Description");
         sampleDto.setAuthors("Test Author");
-        sampleDto.setPriceCents(1000);
+        sampleDto.setPriceCents(1000L);
         sampleDto.setCurrency("USD");
         sampleDto.setType(ProductType.EBOOK);
         sampleDto.setMetadata("{}");
     }
 
-    // ==================== CREATE TESTS ====================
-
     @Test
     void create_withValidDto_returnsCreatedProduct() {
-        // Given
         when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
 
-        // When
         ProductDto result = service.create(sampleDto);
 
-        // Then
         assertNotNull(result);
         assertEquals(sampleProduct.getTitle(), result.getTitle());
         verify(productRepository).save(any(Product.class));
     }
 
     @Test
+    void create_withMissingType_throwsException() {
+        sampleDto.setType(null);
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(sampleDto));
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
     void create_withCategories_savesCategories() {
-        // Given
         UUID categoryId = UUID.randomUUID();
         Category category = new Category();
         category.setId(categoryId);
@@ -110,17 +117,24 @@ class ProductServiceTest {
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
         when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
 
-        // When
         ProductDto result = service.create(sampleDto);
 
-        // Then
         assertNotNull(result);
         verify(categoryRepository).findById(categoryId);
     }
 
     @Test
+    void create_withUnknownCategory_throwsException() {
+        UUID categoryId = UUID.randomUUID();
+        sampleDto.setCategoryIds(Set.of(categoryId));
+        when(categoryRepository.findById(categoryId)).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(sampleDto));
+        verify(productRepository, never()).save(any(Product.class));
+    }
+
+    @Test
     void create_withTags_savesTags() {
-        // Given
         UUID tagId = UUID.randomUUID();
         Tag tag = new Tag();
         tag.setId(tagId);
@@ -132,26 +146,19 @@ class ProductServiceTest {
         when(tagRepository.findById(tagId)).thenReturn(Optional.of(tag));
         when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
 
-        // When
         ProductDto result = service.create(sampleDto);
 
-        // Then
         assertNotNull(result);
         verify(tagRepository).findById(tagId);
     }
 
-    // ==================== READ TESTS ====================
-
     @Test
     void getById_existingId_returnsProduct() {
-        // Given
         UUID id = sampleProduct.getId();
         when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
 
-        // When
         ProductDto result = service.getById(id);
 
-        // Then
         assertNotNull(result);
         assertEquals(id, result.getId());
         assertEquals("Test Book", result.getTitle());
@@ -159,200 +166,130 @@ class ProductServiceTest {
 
     @Test
     void getById_nonExistingId_throwsException() {
-        // Given
         UUID id = UUID.randomUUID();
         when(productRepository.findById(id)).thenReturn(Optional.empty());
 
-        // When & Then
         assertThrows(NoSuchElementException.class, () -> service.getById(id));
     }
 
     @Test
     void findAll_returnsPageOfProducts() {
-        // Given
         Pageable pageable = PageRequest.of(0, 10);
         Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
         when(productRepository.findAll(pageable)).thenReturn(page);
 
-        // When
         Page<ProductDto> result = service.findAll(pageable);
 
-        // Then
         assertEquals(1, result.getTotalElements());
         assertEquals("Test Book", result.getContent().get(0).getTitle());
     }
 
-    // ==================== UPDATE TESTS ====================
-
     @Test
-    void update_existingId_updatesProduct() {
-        // Given
+    void update_existingId_updatesOnlyProvidedFields() {
         UUID id = sampleProduct.getId();
         ProductDto updateDto = new ProductDto();
         updateDto.setTitle("Updated Title");
-        updateDto.setPriceCents(2000);
-        updateDto.setType(ProductType.AUDIOBOOK);
+        updateDto.setPriceCents(2000L);
 
         when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
-        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        // When
         ProductDto result = service.update(id, updateDto);
 
-        // Then
         assertNotNull(result);
-        verify(productRepository).save(any(Product.class));
+        assertEquals("Updated Title", result.getTitle());
+        assertEquals(2000L, result.getPriceCents());
+        assertEquals("USD", result.getCurrency());
+        assertEquals(ProductType.EBOOK, result.getType());
+    }
+
+    @Test
+    void update_withBlankTitle_throwsException() {
+        UUID id = sampleProduct.getId();
+        ProductDto updateDto = new ProductDto();
+        updateDto.setTitle("   ");
+        when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
+
+        assertThrows(IllegalArgumentException.class, () -> service.update(id, updateDto));
     }
 
     @Test
     void update_nonExistingId_throwsException() {
-        // Given
         UUID id = UUID.randomUUID();
         ProductDto updateDto = new ProductDto();
         when(productRepository.findById(id)).thenReturn(Optional.empty());
 
-        // When & Then
         assertThrows(NoSuchElementException.class, () -> service.update(id, updateDto));
     }
 
-    // ==================== DELETE TESTS ====================
-
     @Test
     void delete_existingId_deletesProduct() {
-        // Given
         UUID id = sampleProduct.getId();
         when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
 
-        // When
         service.delete(id);
 
-        // Then
         verify(productRepository).delete(sampleProduct);
     }
 
     @Test
     void delete_nonExistingId_throwsException() {
-        // Given
         UUID id = UUID.randomUUID();
         when(productRepository.findById(id)).thenReturn(Optional.empty());
 
-        // When & Then
         assertThrows(NoSuchElementException.class, () -> service.delete(id));
     }
 
-    // ==================== SEARCH TESTS ====================
-
     @Test
     void search_withQuery_returnsMatchingProducts() {
-        // Given
         Pageable pageable = PageRequest.of(0, 10);
         Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
         when(productRepository.searchByText("Test", pageable)).thenReturn(page);
 
-        // When
         Page<ProductDto> result = service.search("Test", pageable);
 
-        // Then
         assertEquals(1, result.getTotalElements());
         verify(productRepository).searchByText("Test", pageable);
     }
 
-    // ==================== FILTER TESTS ====================
-
     @Test
     void findByType_returnsFilteredProducts() {
-        // Given
         Pageable pageable = PageRequest.of(0, 10);
         Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
         when(productRepository.findByType(ProductType.EBOOK, pageable)).thenReturn(page);
 
-        // When
         Page<ProductDto> result = service.findByType(ProductType.EBOOK, pageable);
 
-        // Then
         assertEquals(1, result.getTotalElements());
         assertEquals(ProductType.EBOOK, result.getContent().get(0).getType());
     }
 
     @Test
     void findByPriceRange_returnsFilteredProducts() {
-        // Given
         Pageable pageable = PageRequest.of(0, 10);
         Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
         when(productRepository.findByPriceCentsBetween(500, 2000, pageable)).thenReturn(page);
 
-        // When
         Page<ProductDto> result = service.findByPriceRange(500, 2000, pageable);
 
-        // Then
         assertEquals(1, result.getTotalElements());
+    }
+
+    @Test
+    void findByPriceRange_withInvalidRange_throwsException() {
+        Pageable pageable = PageRequest.of(0, 10);
+
+        assertThrows(IllegalArgumentException.class, () -> service.findByPriceRange(2000, 500, pageable));
     }
 
     @Test
     void findByCategory_returnsFilteredProducts() {
-        // Given
         Pageable pageable = PageRequest.of(0, 10);
         Page<Product> page = new PageImpl<>(List.of(sampleProduct), pageable, 1);
         when(productRepository.findByCategoryName("Fiction", pageable)).thenReturn(page);
 
-        // When
         Page<ProductDto> result = service.findByCategory("Fiction", pageable);
 
-        // Then
         assertEquals(1, result.getTotalElements());
-    }
-
-    // ==================== EDGE CASES ====================
-
-    @Test
-    void create_withNullCategories_doesNotFail() {
-        // Given
-        sampleDto.setCategoryIds(null);
-        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
-
-        // When
-        ProductDto result = service.create(sampleDto);
-
-        // Then
-        assertNotNull(result);
-        verify(categoryRepository, never()).findById(any());
-    }
-
-    @Test
-    void create_withNullTags_doesNotFail() {
-        // Given
-        sampleDto.setTagIds(null);
-        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
-
-        // When
-        ProductDto result = service.create(sampleDto);
-
-        // Then
-        assertNotNull(result);
-        verify(tagRepository, never()).findById(any());
-    }
-
-    @Test
-    void update_withCategories_updatesCategories() {
-        // Given
-        UUID id = sampleProduct.getId();
-        UUID categoryId = UUID.randomUUID();
-        Category category = new Category();
-        category.setId(categoryId);
-        category.setName("Updated");
-
-        ProductDto updateDto = new ProductDto();
-        updateDto.setCategoryIds(Set.of(categoryId));
-
-        when(productRepository.findById(id)).thenReturn(Optional.of(sampleProduct));
-        when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));
-        when(productRepository.save(any(Product.class))).thenReturn(sampleProduct);
-
-        // When
-        ProductDto result = service.update(id, updateDto);
-
-        // Then
-        assertNotNull(result);
-        verify(categoryRepository).findById(categoryId);
     }
 }

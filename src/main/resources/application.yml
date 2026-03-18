@@ -2,21 +2,30 @@ spring:
   application:
     name: catalog-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/catalog_db
-    username: postgres
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/catalog_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: ${DDL_AUTO:create-drop}
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
 logging:
   level:
     root: INFO
     org.springframework: INFO
     com.example.catalog: DEBUG
+app:
+  security:
+    user:
+      username: ${APP_SECURITY_USER_USERNAME:catalog_user}
+      password: ${APP_SECURITY_USER_PASSWORD:userpass}
+    admin:
+      username: ${APP_SECURITY_ADMIN_USERNAME:catalog_admin}
+      password: ${APP_SECURITY_ADMIN_PASSWORD:adminpass}

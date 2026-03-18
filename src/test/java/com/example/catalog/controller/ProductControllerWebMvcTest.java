@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,8 +31,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(classes = CatalogServiceApplication.class)
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc
 class ProductControllerWebMvcTest {
+
+    private static final String USER_USERNAME = "catalog_user";
+    private static final String USER_PASSWORD = "userpass";
+    private static final String ADMIN_USERNAME = "catalog_admin";
+    private static final String ADMIN_PASSWORD = "adminpass";
 
     @Autowired
     private MockMvc mockMvc;
@@ -43,11 +49,17 @@ class ProductControllerWebMvcTest {
     private ProductService service;
 
     @Test
+    void getCatalog_withoutAuth_returnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/catalog"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void getCatalog_noParams_callsFindAll() throws Exception {
         Page<ProductDto> page = new PageImpl<>(List.of(), Pageable.ofSize(10), 0);
         when(service.findAll(any(Pageable.class))).thenReturn(page);
 
-        mockMvc.perform(get("/catalog"))
+        mockMvc.perform(get("/catalog").with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).findAll(any(Pageable.class));
@@ -58,7 +70,7 @@ class ProductControllerWebMvcTest {
         Page<ProductDto> page = new PageImpl<>(List.of(), Pageable.ofSize(10), 0);
         when(service.search(eq("abc"), any(Pageable.class))).thenReturn(page);
 
-        mockMvc.perform(get("/catalog").param("query", "abc"))
+        mockMvc.perform(get("/catalog").param("query", "abc").with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).search(eq("abc"), any(Pageable.class));
@@ -69,7 +81,7 @@ class ProductControllerWebMvcTest {
         Page<ProductDto> page = new PageImpl<>(List.of(), Pageable.ofSize(10), 0);
         when(service.findByType(eq(ProductType.EBOOK), any(Pageable.class))).thenReturn(page);
 
-        mockMvc.perform(get("/catalog").param("type", "EBOOK"))
+        mockMvc.perform(get("/catalog").param("type", "EBOOK").with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).findByType(eq(ProductType.EBOOK), any(Pageable.class));
@@ -82,7 +94,8 @@ class ProductControllerWebMvcTest {
 
         mockMvc.perform(get("/catalog")
                         .param("minPrice", "10")
-                        .param("maxPrice", "20"))
+                        .param("maxPrice", "20")
+                        .with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).findByPriceRange(eq(10L), eq(20L), any(Pageable.class));
@@ -93,7 +106,7 @@ class ProductControllerWebMvcTest {
         Page<ProductDto> page = new PageImpl<>(List.of(), Pageable.ofSize(10), 0);
         when(service.findByCategory(eq("genre"), any(Pageable.class))).thenReturn(page);
 
-        mockMvc.perform(get("/catalog").param("category", "genre"))
+        mockMvc.perform(get("/catalog").param("category", "genre").with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).findByCategory(eq("genre"), any(Pageable.class));
@@ -106,7 +119,8 @@ class ProductControllerWebMvcTest {
 
         mockMvc.perform(get("/catalog")
                         .param("query", "abc")
-                        .param("type", "EBOOK"))
+                        .param("type", "EBOOK")
+                        .with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).search(eq("abc"), any(Pageable.class));
@@ -117,7 +131,7 @@ class ProductControllerWebMvcTest {
         Page<ProductDto> page = new PageImpl<>(List.of(), Pageable.ofSize(10), 0);
         when(service.findAll(any(Pageable.class))).thenReturn(page);
 
-        mockMvc.perform(get("/catalog").param("minPrice", "10"))
+        mockMvc.perform(get("/catalog").param("minPrice", "10").with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).findAll(any(Pageable.class));
@@ -128,7 +142,7 @@ class ProductControllerWebMvcTest {
         Page<ProductDto> page = new PageImpl<>(List.of(), Pageable.ofSize(10), 0);
         when(service.findAll(any(Pageable.class))).thenReturn(page);
 
-        mockMvc.perform(get("/catalog").param("maxPrice", "20"))
+        mockMvc.perform(get("/catalog").param("maxPrice", "20").with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).findAll(any(Pageable.class));
@@ -136,7 +150,7 @@ class ProductControllerWebMvcTest {
 
     @Test
     void getCatalog_invalidType_returnsBadRequest() throws Exception {
-        mockMvc.perform(get("/catalog").param("type", "NOT_A_REAL_TYPE"))
+        mockMvc.perform(get("/catalog").param("type", "NOT_A_REAL_TYPE").with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -147,25 +161,41 @@ class ProductControllerWebMvcTest {
         dto.setId(id);
         when(service.getById(id)).thenReturn(dto);
 
-        mockMvc.perform(get("/catalog/{id}", id))
+        mockMvc.perform(get("/catalog/{id}", id).with(httpBasic(USER_USERNAME, USER_PASSWORD)))
                 .andExpect(status().isOk());
 
         verify(service).getById(id);
     }
 
     @Test
-    void create_callsService() throws Exception {
+    void create_withUserRole_returnsForbidden() throws Exception {
         ProductDto dto = new ProductDto();
         dto.setTitle("Test");
         dto.setType(ProductType.EBOOK);
         dto.setCurrency("USD");
-        dto.setPriceCents(100);
+        dto.setPriceCents(100L);
+
+        mockMvc.perform(post("/catalog")
+                        .with(httpBasic(USER_USERNAME, USER_PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void create_withAdmin_callsService() throws Exception {
+        ProductDto dto = new ProductDto();
+        dto.setTitle("Test");
+        dto.setType(ProductType.EBOOK);
+        dto.setCurrency("USD");
+        dto.setPriceCents(100L);
 
         ProductDto result = new ProductDto();
         result.setId(UUID.randomUUID());
         when(service.create(any(ProductDto.class))).thenReturn(result);
 
         mockMvc.perform(post("/catalog")
+                        .with(httpBasic(ADMIN_USERNAME, ADMIN_PASSWORD))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk());
@@ -174,20 +204,38 @@ class ProductControllerWebMvcTest {
     }
 
     @Test
-    void update_callsService() throws Exception {
+    void update_withUserRole_returnsForbidden() throws Exception {
         UUID id = UUID.randomUUID();
 
         ProductDto dto = new ProductDto();
         dto.setTitle("Updated");
         dto.setType(ProductType.EBOOK);
         dto.setCurrency("USD");
-        dto.setPriceCents(200);
+        dto.setPriceCents(200L);
+
+        mockMvc.perform(put("/catalog/{id}", id)
+                        .with(httpBasic(USER_USERNAME, USER_PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void update_withAdmin_callsService() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        ProductDto dto = new ProductDto();
+        dto.setTitle("Updated");
+        dto.setType(ProductType.EBOOK);
+        dto.setCurrency("USD");
+        dto.setPriceCents(200L);
 
         ProductDto result = new ProductDto();
         result.setId(id);
         when(service.update(eq(id), any(ProductDto.class))).thenReturn(result);
 
         mockMvc.perform(put("/catalog/{id}", id)
+                        .with(httpBasic(ADMIN_USERNAME, ADMIN_PASSWORD))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk());
@@ -196,10 +244,18 @@ class ProductControllerWebMvcTest {
     }
 
     @Test
-    void delete_callsService() throws Exception {
+    void delete_withUserRole_returnsForbidden() throws Exception {
         UUID id = UUID.randomUUID();
 
-        mockMvc.perform(delete("/catalog/{id}", id))
+        mockMvc.perform(delete("/catalog/{id}", id).with(httpBasic(USER_USERNAME, USER_PASSWORD)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void delete_withAdmin_callsService() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(delete("/catalog/{id}", id).with(httpBasic(ADMIN_USERNAME, ADMIN_PASSWORD)))
                 .andExpect(status().isNoContent());
 
         verify(service).delete(id);
